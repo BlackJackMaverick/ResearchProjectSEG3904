@@ -42,8 +42,61 @@ def DataProcessor (df):
     #add duration column as a engineered feature.
     df = df.assign(DURATION = (df.ENDTIME-df.STARTTIME))
     print(df)
+    FeatureGenerator(df)
+
+#connection based and time based features will be created in this function
+def FeatureGenerator (df):
+    #first connection based engineered features by source address
+    windowSize = 10 #will be increased to 1000 in full datatset
+    windowIndex = windowSize 
+    
+    #create the columns to store the engineered features and append to existing dataframe
+    featureHeaders = [
+    "CONN_BASED_SRCADDRESS_DISTINCT_DSTPORTS", "CONN_BASED_SRCADDRESS_DISTINCT_DSTADDRESS", "CONN_BASED_SRCADDRESS_DISTINCT_SRCPORTS", "CONN_BASED_SRCADDRESS_DISTINCT_AVGPACKETIN", "CONN_BASED_SRCADDRESS_DISTINCT_AVGBYTEIN",
+    "CONN_BASED_DSTADDRESS_DISTINCT_DSTPORTS", "CONN_BASED_DSTADDRESS_DISTINCT_DSTADDRESS", "CONN_BASED_DSTADDRESS_DISTINCT_SRCPORTS", "CONN_BASED_DSTADDRESS_DISTINCT_AVGPACKETIN", "CONN_BASED_DSTADDRESS_DISTINCT_AVGBYTEIN",
+    "TIME_BASED_SRCADDRESS_DISTINCT_SRCADDRESS", "TIME_BASED_SRCADDRESS_DISTINCT_SRCPORTS", "TIME_BASED_SRCADDRESS_DISTINCT_AVGPACKETIN", "TIME_BASED_SRCADDRESS_DISTINCT_AVGBYTEIN",
+    "TIME_BASED_DSTADDRESS_DISTINCT_SRCADDRESS", "TIME_BASED_DSTADDRESS_DISTINCT_SRCPORTS", "TIME_BASED_DSTADDRESS_DISTINCT_AVGPACKETIN", "TIME_BASED_DSTADDRESS_DISTINCT_AVGBYTEIN", 
+    ]
+    featureDf = pd.DataFrame(columns = featureHeaders)
+    df = pd.concat([df, featureDf], axis=1, join_axes=[df.index])
+
+    #TESTING
+    #df.to_csv("Dataset\\testing\\concatTest.csv", encoding='utf-8', index=False)
+
+    while windowIndex < len(df.index):
+        #save the source address of the end of the rolling window
+        targetSourceAddress = df["SRCADDRESS"].iloc[windowIndex]
+        targetDestinationAddress = df["DSTADDRESS"].iloc[windowIndex]
+
+        #create the rolling window which is a subset of the dataframe. 
+        #The rolling window is of size windowSize and looks at the previous rows from the index 
+        #that match the source address of the target.
+        srcRWdf = df.iloc[windowIndex-windowSize : windowIndex]
+        index = srcRWdf.index[srcRWdf["SRCADDRESS"] == targetSourceAddress]
+        srcRWdf = srcRWdf.loc[index]
+
+        #repeat for destination address
+        dstRWdf = df.iloc[windowIndex-windowSize : windowIndex]
+        index = dstRWdf.index[dstRWdf["DSTADDRESS"] == targetDestinationAddress]
+        dstRWdf = dstRWdf.loc[index]
+
+        #from these rolling windows count distinct destination ports, source IPs, source ports, average packet count, average byte count
+        
+        windowIndex = windowIndex + windowSize #at the end go to the next rolling window            
+
+#helper function counts the unique rows based on the column
+def getDistinctRowCount(df, columnName):
+    uniqueRows = []
+    count = 0
+    for row in df[columnName]:
+        if row in uniqueRows:
+            continue
+        else:
+            count = count + 1
+            uniqueRows.append(row)
+    return count       
+
 
 #get Dataset path and headers
 datasetPath = "Dataset\\TestDataSet.csv"
-
 DataReader(datasetPath)
