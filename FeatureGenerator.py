@@ -4,65 +4,91 @@ import pandas as pd
 import numpy as np
 import itertools as IT
 
-def CreateTimeBasedFeatures (dfref, dfSize, windowIndex):
+#This helper method returns an array of data that will be used to populate the connection based features last row.
+#WindowIndex in this case refers to the last row of the dataframe.
+def CreateTimeBasedFeatures (dfref, dfSize, windowIndex, endTime):
     
     #size of the rolling window based on time
     #will be increased to 10 minutes in full dataset
-    timeSize = pd.Timedelta(Minute(1))
+    startTime = pd.Timestamp(endTime) - pd.Timestamp('00:01:00')
+    
+    #get the rows that are within the time frame [startTime, endTime] based on the 'ENDTIME' column
+    chunkSize = 10 #can be increased in full data set
+    chunkIndex = 1
+    df = pd.DataFrame(columns = headers)
+    while True:
+        chunks = pd.read_csv(dfref, skiprows=range(1,chunkIndex), nrows=chunkSize)
+        chunks = chunks.between_time(start_time = startTime, end_time = endTime, include_start=True, include_end=True)
+        
+        #if the first end time in the chunks is greater than the frame break out of loop
+        if chunks["ENDTIME"].iloc[0] >= endTime:
+            break
+        #search for the rows where 'ENDTIME' lies within the time frame and append them to a temporary dataframe
+        df.append(chunks.between_time)
 
-    #generate the first rolling window by starting with the first row and going down. 
-    startTime = pd.read_csv(dfref, skiprows=range(0, windowIndex), nrows=1)
-    startTime = startTime["STARTTIME"].iloc[0]
-    endTime = startTime + timeSize
+        #increase the index to look through the next chunk
+        chunkIndex = chunkIndex + chunkSize
 
-#get the rows that are within the time frame
-    chunksize = 10 #can be increased in full data set
-    chunks = pd.read_csv(dfref, chunksize=chunksize)
-    chunks = IT.takewhile(lambda chunk: startTime <= chunk["STARTTIME"].iloc[-1] <= endTime, chunks)
+    import pdb;pdb.set_trace()
+    chunks = IT.takewhile(lambda chunk: startTime <= chunk["ENDTIME"].iloc[-1] <= endTime, chunks)
     df = pd.concat(chunks)
-    mask = startTime <= df["STARTTIME"] <= endTime
+    mask = startTime <= df["ENDTIME"] <= endTime
     df = df.loc[mask]
 
-#get the rows that are equal to the last source address
+    #get the rows that are equal to the last source address in the time based dataframe.
     targetSourceAddress = df["SRCADDRESS"].iloc[-1]
     index = df.index[df["SRCADDRESS"] == targetSourceAddress]
     srcdf = df.loc[index]
 
-#do the same for the last destination address
+    #do the same for the last destination address
     targetDestinationAddress = df["DSTADDRESS"].iloc[-1]
     index = df.index[df["DSTADDRESS"] == targetDestinationAddress]
     dstdf = df.loc[index]
 
-    #populate the dataframe with the engineered features
-    df["TIME_BASED_SRCADDRESS_TOTAL_OCCURENCES"].iloc[-1] = len(df.index)
-    df["TIME_BASED_SRCADDRESS_OCCURENCES"].iloc[-1] = len(srcdf.index)
-    df["TIME_BASED_SRCADDRESS_DISTINCT_DSTADDRESS"].iloc[-1] = srcdf["DSTADDRESS"].nunique()
-    df["TIME_BASED_SRCADDRESS_DISTINCT_DSTPORTS"].iloc[-1] = srcdf["DSTPORT"].nunique()
-    df["TIME_BASED_SRCADDRESS_DISTINCT_SRCPORTS"].iloc[-1] = srcdf["SRCPORT"].nunique()
-    df["TIME_BASED_SRCADDRESS_AVGPACKETIN"].iloc[-1] = srcdf["PACKETINCOUNT"].mean()
-    df["TIME_BASED_SRCADDRESS_AVGBYTEIN"].iloc[-1] = srcdf["BYTEINCOUNT"].mean()
+    #populate the last row of dataframe with the engineered features
+    timeBasedValues = {
+    "TIME_BASED_SRCADDRESS_TOTAL_OCCURENCES": len(df.index),
+    "TIME_BASED_SRCADDRESS_OCCURENCES":len(srcdf.index),
+    "TIME_BASED_SRCADDRESS_DISTINCT_DSTADDRESS":srcdf["DSTADDRESS"].nunique(),
+    "TIME_BASED_SRCADDRESS_DISTINCT_DSTPORTS":srcdf["DSTPORT"].nunique(),
+    "TIME_BASED_SRCADDRESS_DISTINCT_SRCPORTS":srcdf["SRCPORT"].nunique(),
+    "TIME_BASED_SRCADDRESS_AVGPACKETIN":srcdf["PACKETINCOUNT"].mean(),
+    "TIME_BASED_SRCADDRESS_AVGBYTEIN":srcdf["BYTEINCOUNT"].mean(),
 
     #repeat for the destination address
-    df["TIME_BASED_DSTADDRESS_TOTAL_OCCURENCES"].iloc[-1] = len(df.index)
-    df["TIME_BASED_DSTADDRESS_OCCURENCES"].iloc[-1] = len(dstdf.index)
-    df["TIME_BASED_DSTADDRESS_DISTINCT_SRCADDRESS"].iloc[-1] = dstdf["SRCADDRESS"].nunique()
-    df["TIME_BASED_DSTADDRESS_DISTINCT_DSTPORTS"].iloc[-1] = dstdf["DSTPORT"].nunique()
-    df["TIME_BASED_DSTADDRESS_DISTINCT_SRCPORTS"].iloc[-1] = dstdf["SRCPORT"].nunique()
-    df["TIME_BASED_DSTADDRESS_AVGPACKETIN"].iloc[-1] = dstdf["PACKETINCOUNT"].mean()
-    df["TIME_BASED_DSTADDRESS_AVGBYTEIN"].iloc[-1] = dstdf["BYTEINCOUNT"].mean()
+    "TIME_BASED_DSTADDRESS_TOTAL_OCCURENCES":len(df.index),
+    "TIME_BASED_DSTADDRESS_OCCURENCES":len(dstdf.index),
+    "TIME_BASED_DSTADDRESS_DISTINCT_SRCADDRESS":dstdf["SRCADDRESS"].nunique(),
+    "TIME_BASED_DSTADDRESS_DISTINCT_DSTPORTS":dstdf["DSTPORT"].nunique(),
+    "TIME_BASED_DSTADDRESS_DISTINCT_SRCPORTS":dstdf["SRCPORT"].nunique(),
+    "TIME_BASED_DSTADDRESS_AVGPACKETIN":dstdf["PACKETINCOUNT"].mean(),
+    "TIME_BASED_DSTADDRESS_AVGBYTEIN":dstdf["BYTEINCOUNT"].mean()
+    }
+
+    # df["TIME_BASED_SRCADDRESS_TOTAL_OCCURENCES":len(df.index)
+    # df["TIME_BASED_SRCADDRESS_OCCURENCES":len(srcdf.index)
+    # df["TIME_BASED_SRCADDRESS_DISTINCT_DSTADDRESS":srcdf["DSTADDRESS"].nunique()
+    # df["TIME_BASED_SRCADDRESS_DISTINCT_DSTPORTS":srcdf["DSTPORT"].nunique()
+    # df["TIME_BASED_SRCADDRESS_DISTINCT_SRCPORTS":srcdf["SRCPORT"].nunique()
+    # df["TIME_BASED_SRCADDRESS_AVGPACKETIN":srcdf["PACKETINCOUNT"].mean()
+    # df["TIME_BASED_SRCADDRESS_AVGBYTEIN":srcdf["BYTEINCOUNT"].mean()
+
+    # #repeat for the destination address
+    # df["TIME_BASED_DSTADDRESS_TOTAL_OCCURENCES":len(df.index)
+    # df["TIME_BASED_DSTADDRESS_OCCURENCES":len(dstdf.index)
+    # df["TIME_BASED_DSTADDRESS_DISTINCT_SRCADDRESS":dstdf["SRCADDRESS"].nunique()
+    # df["TIME_BASED_DSTADDRESS_DISTINCT_DSTPORTS":dstdf["DSTPORT"].nunique()
+    # df["TIME_BASED_DSTADDRESS_DISTINCT_SRCPORTS":dstdf["SRCPORT"].nunique()
+    # df["TIME_BASED_DSTADDRESS_AVGPACKETIN":dstdf["PACKETINCOUNT"].mean()
+    # df["TIME_BASED_DSTADDRESS_AVGBYTEIN":dstdf["BYTEINCOUNT"].mean()
 
     #return the last row of the dataframe  that will contain all the information about rolling window
-    return df.iloc[-1]
+    return timeBasedValues
 
-#Function used to create connection based features. 
-#These features will be created based off a rolling window and and rows before will be left blank.
-def CreateConnectionBasedFeatures (dfref, dfSize):
+#Function used to create connection based features based off a rolling window of size 1000.
+def CreateConnectionBasedFeatures (dfref, dfSize, targetDfRef, headers):
 
-    #name of new dataframe and create it
-    newDfRef = "Dataset\\testing\\FeatureGenerator.csv"
-    
-
-    #rows 0-windowSize will remain blank for the engineered connection based features.
+    #rows 0-windowSize will remain blank for the connection based features.
     #WindowSize will be increased to 1000 in full datatset.
     windowSize = 10 
     windowIndex = 0
@@ -71,64 +97,87 @@ def CreateConnectionBasedFeatures (dfref, dfSize):
 
         #fetch a subset of the dataframe of length windowsize
         df = pd.read_csv(dfref, skiprows=range(1,windowIndex), nrows=windowSize)
-        
+        #import pdb;pdb.set_trace() #REMOVE ONCE DONE
+        saveRow = pd.DataFrame(df, columns = headers).iloc[-1] #TODO: why doesnt this get saved properly?
+
         #save the source and destination IP address of the last row of the rolling window
         targetSourceAddress = df["SRCADDRESS"].iloc[-1]
         targetDestinationAddress = df["DSTADDRESS"].iloc[-1]
 
-        #The rolling window is of size windowSize and looks at the previous rows from the index 
-        #that match the source address of the target.
+        #The rolling window is of size windowSize and looks at the previous rows from the index that match the source address of the target.
+        #get the rows that are equal to the last source address
+        #repeat for destination address
         index = df.index[df["SRCADDRESS"] == targetSourceAddress]
         srcdf = df.loc[index]
 
-        #repeat for destination address
         index = df.index[df["DSTADDRESS"] == targetDestinationAddress]
         dstdf = df.loc[index]
 
         #from the rolling window fill out the engineered features for the source address
-        df["CONN_BASED_SRCADDRESS_OCCURENCES"].iloc[-1] = len(srcdf.index)
-        df["CONN_BASED_SRCADDRESS_DISTINCT_DSTPORTS"].iloc[-1] = srcdf["DSTPORT"].nunique()
-        df["CONN_BASED_SRCADDRESS_DISTINCT_DSTADDRESS"].iloc[-1] = srcdf["DSTADDRESS"].nunique()
-        df["CONN_BASED_SRCADDRESS_DISTINCT_SRCPORTS"].iloc[-1] = srcdf["SRCPORT"].nunique()
-        df["CONN_BASED_SRCADDRESS_AVGPACKETIN"].iloc[-1] = srcdf["PACKETINCOUNT"].mean()
-        df["CONN_BASED_SRCADDRESS_AVGBYTEIN"].iloc[-1] = srcdf["BYTEINCOUNT"].mean()
+        saveRow["CONN_BASED_SRCADDRESS_OCCURENCES"] = len(srcdf.index)
+        saveRow["CONN_BASED_SRCADDRESS_OCCURENCES"] = len(srcdf.index)
+        saveRow["CONN_BASED_SRCADDRESS_DISTINCT_DSTPORTS"]= srcdf["DSTPORT"].nunique()
+        saveRow["CONN_BASED_SRCADDRESS_DISTINCT_DSTADDRESS"] = srcdf["DSTADDRESS"].nunique()
+        saveRow["CONN_BASED_SRCADDRESS_DISTINCT_SRCPORTS"] = srcdf["SRCPORT"].nunique()
+        saveRow["CONN_BASED_SRCADDRESS_AVGPACKETIN"] = srcdf["PACKETINCOUNT"].mean()
+        saveRow["CONN_BASED_SRCADDRESS_AVGBYTEIN"] = srcdf["BYTEINCOUNT"].mean()
 
         #repeat the features for the destination address
-        df["CONN_BASED_DSTADDRESS_OCCURENCES"].iloc[-1] = len(dstdf.index)
-        df["CONN_BASED_DSTADDRESS_DISTINCT_DSTPORTS"].iloc[-1] = dstdf["DSTPORT"].nunique()
-        df["CONN_BASED_DSTADDRESS_DISTINCT_SRCADDRESS"].iloc[-1] = dstdf["DSTADDRESS"].nunique()
-        df["CONN_BASED_DSTADDRESS_DISTINCT_SRCPORTS"].iloc[-1] = dstdf["SRCPORT"].nunique()
-        df["CONN_BASED_DSTADDRESS_AVGPACKETIN"].iloc[-1] = dstdf["PACKETINCOUNT"].mean()
-        df["CONN_BASED_DSTADDRESS_AVGBYTEIN"].iloc[-1] = dstdf["BYTEINCOUNT"].mean()
+        saveRow["CONN_BASED_DSTADDRESS_OCCURENCES"] = len(dstdf.index)
+        saveRow["CONN_BASED_DSTADDRESS_DISTINCT_DSTPORTS"] = dstdf["DSTPORT"].nunique()
+        saveRow["CONN_BASED_DSTADDRESS_DISTINCT_SRCADDRESS"] = dstdf["DSTADDRESS"].nunique()
+        saveRow["CONN_BASED_DSTADDRESS_DISTINCT_SRCPORTS"] = dstdf["SRCPORT"].nunique()
+        saveRow["CONN_BASED_DSTADDRESS_AVGPACKETIN"] = dstdf["PACKETINCOUNT"].mean()
+        saveRow["CONN_BASED_DSTADDRESS_AVGBYTEIN"] = dstdf["BYTEINCOUNT"].mean()
 
-        #use helper method to get a dataframe of the timebased features
-        timeBasedDf = CreateConnectionBasedFeatures(dfref, dfSize, df.index[df.iloc[-1]])
-        df.update(timeBasedDf)
+        #use helper method to get the timebased features.
+        #The time based features will begin at the last index of the dataframe for the connection based features.
+        #the helper method will return a dictionary, 
+        #so use the values from the dictionary to populate the time based features in the last row of the dataframe
+        timeBasedRow = CreateTimeBasedFeatures(dfref, dfSize, windowIndex + windowSize, saveRow["ENDTIME"])
+        saveRow["TIME_BASED_SRCADDRESS_TOTAL_OCCURENCES"] = timeBasedRow["TIME_BASED_SRCADDRESS_TOTAL_OCCURENCES"]
+        saveRow["TIME_BASED_SRCADDRESS_OCCURENCES"] = timeBasedRow["TIME_BASED_SRCADDRESS_OCCURENCES"]
+        saveRow["TIME_BASED_SRCADDRESS_DISTINCT_DSTADDRESS"] = timeBasedRow["TIME_BASED_SRCADDRESS_DISTINCT_DSTADDRESS"]
+        saveRow["TIME_BASED_SRCADDRESS_DISTINCT_DSTPORTS"] = timeBasedRow["TIME_BASED_SRCADDRESS_DISTINCT_DSTPORTS"]
+        saveRow["TIME_BASED_SRCADDRESS_DISTINCT_SRCPORTS"] = timeBasedRow["TIME_BASED_SRCADDRESS_DISTINCT_SRCPORTS"]
+        saveRow["TIME_BASED_SRCADDRESS_AVGPACKETIN"] = timeBasedRow["TIME_BASED_SRCADDRESS_AVGPACKETIN"]
+        saveRow["TIME_BASED_SRCADDRESS_AVGBYTEIN"] = timeBasedRow["TIME_BASED_SRCADDRESS_AVGBYTEIN"]
 
-        # cleanup for next round of loop.
-        # Apply the editted row to the dataframe and save.
+        saveRow["TIME_BASED_DSTADDRESS_TOTAL_OCCURENCES"] = timeBasedRow["TIME_BASED_DSTADDRESS_TOTAL_OCCURENCES"]
+        saveRow["TIME_BASED_DSTADDRESS_OCCURENCES"] = timeBasedRow["TIME_BASED_DSTADDRESS_OCCURENCES"]
+        saveRow["TIME_BASED_DSTADDRESS_DISTINCT_DSTADDRESS"] = timeBasedRow["TIME_BASED_DSTADDRESS_DISTINCT_DSTADDRESS"]
+        saveRow["TIME_BASED_DSTADDRESS_DISTINCT_DSTPORTS"] = timeBasedRow["TIME_BASED_DSTADDRESS_DISTINCT_DSTPORTS"]
+        saveRow["TIME_BASED_DSTADDRESS_DISTINCT_SRCPORTS"] = timeBasedRow["TIME_BASED_DSTADDRESS_DISTINCT_SRCPORTS"]
+        saveRow["TIME_BASED_DSTADDRESS_AVGPACKETIN"] = timeBasedRow["TIME_BASED_DSTADDRESS_AVGPACKETIN"]
+        saveRow["TIME_BASED_DSTADDRESS_AVGBYTEIN"] = timeBasedRow["TIME_BASED_DSTADDRESS_AVGBYTEIN"]
+
+        print(saveRow)
+        # Save the last row of the engineered features to a separate CSV file.
         # Increase index to next row. 
-        with open(newDfRef, 'a') as f:
-                df.iloc[-1].to_csv(f, header=False)
+        windowIndex = windowIndex + 1
+        df.iloc[-1].to_csv(targetDfRef, mode = 'a', header = false)
 
 dataframeReference = "Dataset\\testing\\TrainModel.csv"
+featureGeneratedDfRef = "Dataset\\testing\\FeatureGenerator.csv"
 
-#create the columns to store the engineered features and append to existing dataframe. Then save it.
-#this operation may take a long time based on the size of the dataframe, but it only needs to be done once.
-    
+#get the headers of the dataframe and features then combine them.
+columnNames = pd.read_csv(dataframeReference, nrows = 1)
+columnNames = columnNames.columns.values
 featureHeaders = [
 "CONN_BASED_SRCADDRESS_OCCURENCES", "CONN_BASED_SRCADDRESS_DISTINCT_DSTPORTS", "CONN_BASED_SRCADDRESS_DISTINCT_DSTADDRESS", "CONN_BASED_SRCADDRESS_DISTINCT_SRCPORTS", "CONN_BASED_SRCADDRESS_AVGPACKETIN", "CONN_BASED_SRCADDRESS_AVGBYTEIN",
 "CONN_BASED_DSTADDRESS_OCCURENCES", "CONN_BASED_DSTADDRESS_DISTINCT_DSTPORTS", "CONN_BASED_DSTADDRESS_DISTINCT_SRCADDRESS", "CONN_BASED_DSTADDRESS_DISTINCT_SRCPORTS", "CONN_BASED_DSTADDRESS_AVGPACKETIN", "CONN_BASED_DSTADDRESS_AVGBYTEIN",
 "TIME_BASED_SRCADDRESS_TOTAL_OCCURENCES", "TIME_BASED_SRCADDRESS_OCCURENCES", "TIME_BASED_SRCADDRESS_DISTINCT_DSTADDRESS", "TIME_BASED_SRCADDRESS_DISTINCT_DSTPORTS", "TIME_BASED_SRCADDRESS_DISTINCT_SRCPORTS", "TIME_BASED_SRCADDRESS_AVGPACKETIN", "TIME_BASED_SRCADDRESS_AVGBYTEIN",
 "TIME_BASED_DSTADDRESS_TOTAL_OCCURENCES", "TIME_BASED_DSTADDRESS_OCCURENCES", "TIME_BASED_DSTADDRESS_DISTINCT_SRCADDRESS", "TIME_BASED_DSTADDRESS_DISTINCT_DSTPORTS", "TIME_BASED_DSTADDRESS_DISTINCT_SRCPORTS", "TIME_BASED_DSTADDRESS_AVGPACKETIN", "TIME_BASED_DSTADDRESS_AVGBYTEIN",
 ]
+headers = np.concatenate ((columnNames, featureHeaders), axis =0)
 
-featureDf = pd.DataFrame(columns = featureHeaders)
-df = pd.read_csv(dataframeReference)
-df = pd.concat([df, featureDf], axis=1, join_axes=[df.index])
-df.to_csv(dataframeReference, encoding='utf-8', index=False)
-size = len(df.index)
+#create new csv file to store the feature generated values and save the headers as the first row.
+featureDf = pd.DataFrame(columns = headers)
+featureDf.to_csv(featureGeneratedDfRef, encoding='utf-8', index=False)
 
-#after adding in the new columns create the connection based and time based features
-CreateConnectionBasedFeatures(dataframeReference, size)
-CreateTimeBasedFeatures(dataframeReference, size)
+#get number of rows from the original reference dataframe
+with open(dataframeReference) as f:
+    size = sum(1 for line in f)
+
+#create the connection based and time based features.
+CreateConnectionBasedFeatures(dataframeReference, size, featureGeneratedDfRef, headers)
