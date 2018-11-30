@@ -10,30 +10,35 @@ def CreateTimeBasedFeatures (dfref, dfSize, windowIndex, endTime):
     
     #size of the rolling window based on time
     #will be increased to 10 minutes in full dataset
-    startTime = pd.Timestamp(endTime) - pd.Timestamp('00:01:00')
+    startTime = pd.to_datetime(endTime) - pd.offsets.Minute(1)
     
     #get the rows that are within the time frame [startTime, endTime] based on the 'ENDTIME' column
     chunkSize = 10 #can be increased in full data set
     chunkIndex = 1
     df = pd.DataFrame(columns = headers)
-    while True:
+    
+    #TODO: get the loop to work successfully we may need some test cases
+    while chunkIndex<dfSize:
         chunks = pd.read_csv(dfref, skiprows=range(1,chunkIndex), nrows=chunkSize)
-        chunks = chunks.between_time(start_time = startTime, end_time = endTime, include_start=True, include_end=True)
         
-        #if the first end time in the chunks is greater than the frame break out of loop
-        if chunks["ENDTIME"].iloc[0] >= endTime:
+        #if the first end time in the chunks is greater than the end time of the time frame break out of loop
+        if (chunks["ENDTIME"].iloc[0] > endTime):
             break
         #search for the rows where 'ENDTIME' lies within the time frame and append them to a temporary dataframe
-        df.append(chunks.between_time)
+        chunks['ENDTIME'] = pd.to_datetime(chunks['ENDTIME'])
+        mask = (chunks['ENDTIME'] >= startTime) & (chunks['ENDTIME'] <= endTime)
+        #import pdb;pdb.set_trace()
+        df = df.append(chunks.loc[mask])
 
+        #print(df)
         #increase the index to look through the next chunk
         chunkIndex = chunkIndex + chunkSize
 
-    import pdb;pdb.set_trace()
-    chunks = IT.takewhile(lambda chunk: startTime <= chunk["ENDTIME"].iloc[-1] <= endTime, chunks)
-    df = pd.concat(chunks)
-    mask = startTime <= df["ENDTIME"] <= endTime
-    df = df.loc[mask]
+    #import pdb;pdb.set_trace()
+    # chunks = IT.takewhile(lambda chunk: startTime <= chunk["ENDTIME"].iloc[-1] <= endTime, chunks)
+    # df = pd.concat(chunks)
+    # mask = startTime <= df["ENDTIME"] <= endTime
+    # df = df.loc[mask]
 
     #get the rows that are equal to the last source address in the time based dataframe.
     targetSourceAddress = df["SRCADDRESS"].iloc[-1]
@@ -91,14 +96,13 @@ def CreateConnectionBasedFeatures (dfref, dfSize, targetDfRef, headers):
     #rows 0-windowSize will remain blank for the connection based features.
     #WindowSize will be increased to 1000 in full datatset.
     windowSize = 10 
-    windowIndex = 0
+    windowIndex = 1
     
     while windowIndex < dfSize:
 
         #fetch a subset of the dataframe of length windowsize
         df = pd.read_csv(dfref, skiprows=range(1,windowIndex), nrows=windowSize)
-        #import pdb;pdb.set_trace() #REMOVE ONCE DONE
-        saveRow = pd.DataFrame(df, columns = headers).iloc[-1] #TODO: why doesnt this get saved properly?
+        saveRow = pd.DataFrame(df, columns = headers).iloc[-1]
 
         #save the source and destination IP address of the last row of the rolling window
         targetSourceAddress = df["SRCADDRESS"].iloc[-1]
@@ -145,18 +149,18 @@ def CreateConnectionBasedFeatures (dfref, dfSize, targetDfRef, headers):
 
         saveRow["TIME_BASED_DSTADDRESS_TOTAL_OCCURENCES"] = timeBasedRow["TIME_BASED_DSTADDRESS_TOTAL_OCCURENCES"]
         saveRow["TIME_BASED_DSTADDRESS_OCCURENCES"] = timeBasedRow["TIME_BASED_DSTADDRESS_OCCURENCES"]
-        saveRow["TIME_BASED_DSTADDRESS_DISTINCT_DSTADDRESS"] = timeBasedRow["TIME_BASED_DSTADDRESS_DISTINCT_DSTADDRESS"]
+        saveRow["TIME_BASED_DSTADDRESS_DISTINCT_SRCADDRESS"] = timeBasedRow["TIME_BASED_DSTADDRESS_DISTINCT_SRCADDRESS"]
         saveRow["TIME_BASED_DSTADDRESS_DISTINCT_DSTPORTS"] = timeBasedRow["TIME_BASED_DSTADDRESS_DISTINCT_DSTPORTS"]
         saveRow["TIME_BASED_DSTADDRESS_DISTINCT_SRCPORTS"] = timeBasedRow["TIME_BASED_DSTADDRESS_DISTINCT_SRCPORTS"]
         saveRow["TIME_BASED_DSTADDRESS_AVGPACKETIN"] = timeBasedRow["TIME_BASED_DSTADDRESS_AVGPACKETIN"]
         saveRow["TIME_BASED_DSTADDRESS_AVGBYTEIN"] = timeBasedRow["TIME_BASED_DSTADDRESS_AVGBYTEIN"]
 
-        print(saveRow)
+        #print(saveRow)
         # Save the last row of the engineered features to a separate CSV file.
+        # The method we are using to populate the values results in a saveRow being a series instead of a dataframe.
         # Increase index to next row. 
         windowIndex = windowIndex + 1
-        df.iloc[-1].to_csv(targetDfRef, mode = 'a', header = false)
-
+        saveRow.to_frame(name=None).transpose().to_csv(targetDfRef, mode = 'a', header = False, index=False)
 dataframeReference = "Dataset\\testing\\TrainModel.csv"
 featureGeneratedDfRef = "Dataset\\testing\\FeatureGenerator.csv"
 
