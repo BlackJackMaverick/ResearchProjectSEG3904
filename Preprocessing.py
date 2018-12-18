@@ -1,68 +1,66 @@
-#data preprocessing of data set. dataset is passed as a reference to optimize performance.
 import csv
 import os
 import pandas as pd
 import numpy as np
+import logging
+from shutil import copyfile
 
-#copy all the attack types labelled as dos to another CSV file. 
-def CopyAttackRows(SourceDataset, DestDataset):
-    dosAttackTypes = ["Back", "land", "neptune","pod", "smurf", "teardrop"] #dos attack labels
+#the purpose of this program is to preprocess some of the data before generating the features. 
+# With the exception of "DURATION", discretization and feature generation will be implemented in FeatureGenerator.py.
 
-    #csv reader for the source dataset, and writer for the destination. 
-    # Rows will be copied to the destination if they are attack rows.
-    with open(SourceDataset, 'r') as Source:
-        with open(DestDataset, 'w', newline='') as Dest:
-            SourceReader = csv.reader(Source)
-            DestWriter = csv.writer(Dest)
-            for row in SourceReader:
-                if row[41] in dosAttackTypes:
-                    DestWriter.writerow(row) 
+def DataPreProcessor (df):
+
+    #only load in the columns of the copied dataset that need to be modified.
+    headers = ["ENDTIME", "STARTTIME", "PACKETINCOUNT", "PACKETINCOUNT", "BYTEINCOUNT", "TCPFLAGS", "FLOWS"]
+
+    #select the headers that will be converted to timestamps, int32, int8 respectively
+    timeHeaders =  ["ENDTIME", "STARTTIME"]
+    countHeaders = ["PACKETINCOUNT", "PACKETINCOUNT", "PACKETOUTCOUNT", "BYTEINCOUNT"]
+    flowHeaders = ["TCPFLAGS", "FLOWS"]
+
+    #Iterate through the columns, if they lie in the specified headers above convert them to a more suitable type
+    for column in df:
+        if column in timeHeaders:
+            df[column] = pd.to_datetime(df[column])
+
+        if column in countHeaders:
+            df[column] = df[column].astype(np.int32)
+
+        if column in flowHeaders:
+            df[column] = df[column].astype(np.int8)
+
+    logging.info("headers replaced")
+
+    #add duration column as a engineered feature. Convert the duration to an integer then save the dataframe locally.
+    df = df.assign(DURATION = (df.ENDTIME-df.STARTTIME))
+    df["DURATION"]=df["DURATION"].astype('timedelta64[s]')
+    df["DURATION"]=df["DURATION"].astype(int)
+
+    logging.info("DURATION column added")
+    return df
  
-#prints out all the rows to the terminal. 
-def PrintAll(DatasetRef):
-    datasetReader = csv.reader(open(DatasetRef))
-    for row in datasetReader:
-        print (row)    
+#logging information
+logLoc = "Docs\\Logs\\TrainModel.log"
+logging.basicConfig(filename = logLoc ,format='%(levelname)s : %(asctime)s : %(message)s', level=logging.DEBUG, datefmt= "%I:%M:%S")
+logging.info("Log Successfully generated")
 
-#prints number of total records, how many are  labelled as dos, and how many are normal. 
-def PrintSummary(datasetRef):
-    #counters for records
-    normalCount = 0
-    attackCount = 0
-    recordCount = 0
-    dosAttackTypes = ["Back", "land", "neptune","pod", "smurf", "teardrop"]
-    with open(datasetRef, 'r') as csvFile:
-        #iterate through each row in the csv file.
-        datasetReader = csv.reader(csvFile)
-        for row in datasetReader: 
-            if row[41] in dosAttackTypes:
-                attackCount += 1
-            if row[41] == "normal":
-                normalCount += 1
-            recordCount += 1
-    print ("There are a total of " + str(recordCount) + " records of traffic")
-    print ("There are " + str(attackCount) + " attack records")
-    print ("There are " + str(normalCount) + " normal records")
-    
-#the different data sets file names along with their location
-folderPath ='NSLKDDDataset\\NSL_KDD-master\\CSVData\\DOSattacks'
-DatasetPath ='NSLKDDDataset\\NSL_KDD-master\\CSVData'
-Tests = ['\\SmallTrainingSet.csv', '\\20PercentTrainingSet.csv', '\\FullTrainingSet.csv']
+srcDatasetPath = "Dataset\\FullDataSet.csv"
+dstDatasetPath = "Dataset\\ProcessedDataset\\Preprocessing.csv"
+#copyfile(srcDatasetPath,dstDatasetPath)
 
-#create a folder to store only the DOS attacks from each of the datasets.  
-if not os.path.exists(folderPath):
-    os.makedirs(folderPath)
+#get the headers and append to a new dataframe
+headers = pd.read_csv(srcDatasetPath, nrows=1).columns.values
+featureHeaders =["DURATION"]
+headers = np.concatenate((headers, featureHeaders), axis =0)
 
-#If the CSV file does not exist then create it. 
-for test in Tests:
-    if not os.path.exists(folderPath+test):
-        open(folderPath+test, 'wb')
-#If the CSV file is empty then populate it with the attack rows of the intended dataset.    
-    try:
-        pd.read_csv(folderPath+test)
-    except:
-        CopyAttackRows((DatasetPath+test), (folderPath + test))
+preprocDf = pd.DataFrame(columns = headers)
+preprocDf.to_csv(dstDatasetPath, encoding='utf-8', index=False)
 
-    #print out the rows and a summary of the number of records. 
-    PrintAll(folderPath+test)
-    PrintSummary(DatasetPath+test)
+#Apply the preprocessing and append to the destination csv file
+chunksize = 10000
+for chunk in pd.read_csv(srcDatasetPath, chunksize=chunksize):
+    logging.info("preprocessing chunk")
+    df = DataPreProcessor(chunk)
+
+    logging.info("appending chunk to destination csv file")
+    df.to_csv(dstDatasetPath, encoding='utf-8', index=False, header=False, mode='a')
